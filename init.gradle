@@ -1,0 +1,51 @@
+import com.android.build.api.attributes.BuildTypeAttr
+
+initscript {
+    repositories {
+        mavenCentral()
+        google()
+    }
+
+    dependencies {
+        classpath "com.android.tools.build:gradle-api:8.8.0"
+    }
+}
+
+afterProject { project ->
+    if (project.plugins.findPlugin("com.android.library") == null
+            && project.plugins.findPlugin("com.android.application") == null) {
+        // No android extension
+        return
+    }
+    registerResolveDependenciesTasks(project)
+}
+
+def registerResolveDependenciesTasks(Project project) {
+    project.android.unitTestVariants.all { variant ->
+        registerResolveDependenciesTask(project, variant)
+    }
+}
+
+def registerResolveDependenciesTask(Project project, Object variant) {
+    def superConfig = variant.runtimeConfiguration
+    def resolvableConfigProvider =
+            project.configurations.resolvable("resolvable" + superConfig.name.capitalize()) {
+                extendsFrom(superConfig)
+                extendsFrom(variant.testedVariant.runtimeConfiguration)
+                attributes {
+                    attribute(Attribute.of("artifactType", String.class), "jar")
+                    attribute(Usage.USAGE_ATTRIBUTE, project.objects.named(Usage, Usage.JAVA_API))
+                    attribute(BuildTypeAttr.ATTRIBUTE, project.objects.named(BuildTypeAttr, variant.buildType.name))
+                }
+            }
+    project.tasks.register("resolve" + variant.name.capitalize() + "RuntimeDependencies") {
+        def config = resolvableConfigProvider.get()
+        dependsOn(config.buildDependencies)
+        doLast {
+            println "Resolved dependencies:"
+            config.files.forEach {
+                println it
+            }
+        }
+    }
+}
